@@ -1,7 +1,4 @@
-[매장_일별_스케줄러.html](https://github.com/user-attachments/files/29959971/_._.html)
-# mplayground-scheduler
-매장 스케쥴 관리 프로그램입니
-[Uploading 매장_일별_스케줄러.html…]()
+[매장_일별_스케줄러.html](https://github.com/user-attachments/files/29959994/_._.html)
 <!DOCTYPE html>
 <html lang="ko">
 <head>
