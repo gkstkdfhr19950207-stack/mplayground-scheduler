@@ -205,6 +205,23 @@
     vertical-align:-1px;
   }
 
+  .meta select#storeName{
+    border:1px solid var(--line); border-radius:8px; padding:8px 12px;
+    font-size:14px; width:190px; background:var(--card); font-family:inherit; cursor:pointer;
+  }
+
+  .store-mgmt-list{max-height:260px; overflow:auto; margin:10px 0; border:1px solid var(--line); border-radius:8px;}
+  .store-mgmt-row{display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px;}
+  .store-mgmt-row:last-child{border-bottom:none;}
+  .store-mgmt-row .code{font-weight:700; color:var(--muted); min-width:56px;}
+  .store-mgmt-row .name{flex:1; font-weight:600;}
+  .store-mgmt-row button{border:none; background:transparent; color:#d64545; cursor:pointer; font-size:14px; padding:2px 6px;}
+  .store-mgmt-row button:hover{color:#a92e2e;}
+  .store-add-row{display:flex; gap:6px; margin-top:8px;}
+  .store-add-row input{border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
+  .store-add-row input#newStoreCode{max-width:100px;}
+  .store-add-row input#newStoreName{flex:1;}
+
   /* 동기화 상태 배지 */
   .sync-badge{
     display:flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--card);
@@ -250,6 +267,7 @@
     header{gap:10px;}
     h1{font-size:18px;}
     .meta input[type=text]{width:130px;}
+    .meta select#storeName{width:150px;}
     .btn{padding:10px 12px; font-size:13px;}
     .sales-grid{grid-template-columns:repeat(2, 1fr);}
     .palette{padding:10px;}
@@ -262,6 +280,7 @@
     .sales-grid{grid-template-columns:repeat(2, 1fr);}
     .meta{width:100%;}
     .meta input[type=text]{flex:1; width:auto;}
+    .meta select#storeName{flex:1; width:auto;}
     .toolbar{flex-wrap:wrap;}
     .toolbar .btn{flex:1; min-width:120px;}
   }
@@ -283,10 +302,13 @@
   <header>
     <h1>매장 일별 <span>스케줄러</span></h1>
     <div class="meta">
-      <input type="text" id="storeName" placeholder="매장명 (예: 대구동성로점)">
+      <select id="storeName">
+        <option value="">매장 선택</option>
+      </select>
       <input type="date" id="workDate">
     </div>
     <div class="spacer"></div>
+    <button class="btn" onclick="openStoreModal()">⚙ 매장 관리</button>
     <div class="sync-badge off" id="syncBadge" onclick="openSyncModal()">
       <span class="sync-dot"></span><span id="syncBadgeText">동기화 설정</span>
     </div>
@@ -415,6 +437,25 @@
   <option value="파트타임"></option>
   <option value="단기스태프"></option>
 </datalist>
+
+<div class="modal-back hide" id="storeModal">
+  <div class="modal">
+    <h3>⚙️ 매장 관리</h3>
+    <p>
+      매장을 추가·삭제하면 상단 "매장 선택" 목록에 바로 반영돼요.
+      실시간 동기화가 연결되어 있으면 이 목록도 다른 기기에 자동으로 반영됩니다.
+    </p>
+    <div class="store-mgmt-list" id="storeMgmtList"></div>
+    <div class="store-add-row">
+      <input type="text" id="newStoreCode" placeholder="코드 (예: M0019)">
+      <input type="text" id="newStoreName" placeholder="매장명 (예: 신촌점)">
+      <button class="btn" onclick="addStore()">＋ 추가</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn primary" onclick="closeStoreModal()">닫기</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-back hide" id="syncModal">
   <div class="modal">
@@ -548,6 +589,7 @@ function initSync(){
   try{
     if(!fbApp){ fbApp = firebase.initializeApp(cfg); }
     subscribeSync();
+    subscribeStoreList();
   }catch(e){
     console.error(e);
     setSyncBadge('err','연결 오류');
@@ -588,6 +630,116 @@ function pushSync(){
 ['storeName','workDate'].forEach(id=>{
   document.getElementById(id).addEventListener('change', ()=>{ if(fbApp) subscribeSync(); });
 });
+
+/* ================= 매장 목록 관리 ================= */
+const STORE_LIST_KEY = 'schedulerStoreList';
+const DEFAULT_STORES = [
+  {code:'M0001', name:'홍대본점'},
+  {code:'M0002', name:'건대점'},
+  {code:'M0003', name:'수원점'},
+  {code:'M0004', name:'안산점'},
+  {code:'M0005', name:'고양점'},
+  {code:'M0006', name:'홍대3호점'},
+  {code:'M0007', name:'안성점'},
+  {code:'M0008', name:'연세1호점'},
+  {code:'M0009', name:'광주2호점'},
+  {code:'M0010', name:'광주3호점'},
+  {code:'M0012', name:'명동1호점'},
+  {code:'M0014', name:'서현점'},
+  {code:'M0015', name:'천안점'},
+  {code:'M0016', name:'명동2호점'},
+  {code:'M0017', name:'성수1호점'},
+  {code:'M0018', name:'대구점'}
+];
+let fbStoreRefOn = false;
+
+function loadStoreList(){
+  try{
+    const raw = localStorage.getItem(STORE_LIST_KEY);
+    if(raw){
+      const list = JSON.parse(raw);
+      if(Array.isArray(list) && list.length) return list;
+    }
+  }catch(e){}
+  return DEFAULT_STORES.slice();
+}
+function saveStoreListLocal(list){
+  localStorage.setItem(STORE_LIST_KEY, JSON.stringify(list));
+}
+function renderStoreSelect(){
+  const list = loadStoreList();
+  const sel = document.getElementById('storeName');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">매장 선택</option>' +
+    list.map(s=> `<option value="${s.name.replace(/"/g,'&quot;')}">${s.code} ${s.name}</option>`).join('');
+  // 이전 선택값이 목록에 남아있으면 유지
+  if(list.some(s=>s.name===prev)) sel.value = prev;
+}
+function openStoreModal(){
+  renderStoreMgmtList();
+  document.getElementById('storeModal').classList.remove('hide');
+}
+function closeStoreModal(){ document.getElementById('storeModal').classList.add('hide'); }
+function renderStoreMgmtList(){
+  const list = loadStoreList();
+  const box = document.getElementById('storeMgmtList');
+  box.innerHTML = list.map(s=>`
+    <div class="store-mgmt-row">
+      <span class="code">${s.code}</span>
+      <span class="name">${s.name}</span>
+      <button onclick="removeStore('${s.code.replace(/'/g,"\\'")}')" title="삭제">✕</button>
+    </div>
+  `).join('') || '<div class="store-mgmt-row"><span class="name" style="color:var(--muted)">등록된 매장이 없어요</span></div>';
+}
+function addStore(){
+  const codeEl = document.getElementById('newStoreCode');
+  const nameEl = document.getElementById('newStoreName');
+  const code = codeEl.value.trim();
+  const name = nameEl.value.trim();
+  if(!code || !name){ alert('코드와 매장명을 모두 입력해 주세요.'); return; }
+  const list = loadStoreList();
+  if(list.some(s=>s.code===code)){ alert('이미 있는 코드예요.'); return; }
+  if(list.some(s=>s.name===name)){ alert('이미 있는 매장명이에요.'); return; }
+  list.push({code, name});
+  saveStoreListLocal(list);
+  pushStoreListToFirebase(list);
+  renderStoreMgmtList();
+  renderStoreSelect();
+  codeEl.value = ''; nameEl.value = '';
+}
+function removeStore(code){
+  const list = loadStoreList();
+  const target = list.find(s=>s.code===code);
+  if(!target) return;
+  if(!confirm(`'${target.name}' 매장을 목록에서 삭제할까요? (이미 저장된 스케줄 데이터는 삭제되지 않아요)`)) return;
+  const newList = list.filter(s=>s.code!==code);
+  saveStoreListLocal(newList);
+  pushStoreListToFirebase(newList);
+  renderStoreMgmtList();
+  renderStoreSelect();
+}
+function pushStoreListToFirebase(list){
+  if(!fbApp) return;
+  try{
+    const map = {};
+    list.forEach(s=> map[s.code] = s.name);
+    firebase.database().ref('storeList').set(map).catch(e=>console.error('매장 목록 동기화 실패', e));
+  }catch(e){ console.error(e); }
+}
+function subscribeStoreList(){
+  if(!fbApp || fbStoreRefOn) return;
+  fbStoreRefOn = true;
+  firebase.database().ref('storeList').on('value', snap=>{
+    const val = snap.val();
+    if(!val) return; // 원격에 아직 저장된 목록 없음 (로컬 기본값 유지)
+    const list = Object.keys(val).map(code=>({code, name: val[code]}));
+    saveStoreListLocal(list);
+    const cur = document.getElementById('storeName').value;
+    renderStoreSelect();
+    if(list.some(s=>s.name===cur)) document.getElementById('storeName').value = cur;
+  }, err=> console.error('매장 목록 구독 실패', err));
+}
+renderStoreSelect();
 initSync();
 
 /* ---------- 팔레트 ---------- */
@@ -1108,6 +1260,7 @@ function tryAutoRestore(){
 // 입력 변경 시 자동 저장
 ['storeName','workDate','memoBox'].forEach(id=>{
   document.getElementById(id).addEventListener('input', autoSave);
+  document.getElementById(id).addEventListener('change', autoSave);
 });
 
 /* ---------- 엑셀(XLSX) 저장: 색상 포함 ---------- */
