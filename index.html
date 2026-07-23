@@ -222,6 +222,17 @@
   .store-add-row input#newStoreCode{max-width:100px;}
   .store-add-row input#newStoreName{flex:1;}
 
+  .custom-row{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin:0 0 14px; padding:10px 14px; background:var(--card);
+    border:1px solid var(--line); border-radius:10px;
+  }
+  .custom-row input{
+    border:1px solid var(--line); border-radius:8px; padding:7px 10px;
+    font-size:13px; font-family:inherit; width:160px;
+  }
+  .custom-active{font-size:12.5px; font-weight:700; color:var(--accent);}
+
   /* 동기화 상태 배지 */
   .sync-badge{
     display:flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--card);
@@ -390,6 +401,12 @@
     <span class="label">업무 선택 →</span>
     <span class="hint">칠하기: 클릭·드래그, 같은 업무 다시 누르면 지워짐 · 선택·복사: 드래그로 범위 선택 후 Ctrl+C / Ctrl+V, Delete로 지우기</span>
   </div>
+  <div class="custom-row" id="customRow">
+    <span class="label">직접 입력 →</span>
+    <input type="text" id="customTaskInput" placeholder="예: 미팅, 검수 등" maxlength="12">
+    <button class="btn" onclick="applyCustomTask()">✓ 이 내용 선택</button>
+    <span class="custom-active" id="customActiveLabel"></span>
+  </div>
   <div class="toast" id="toast"></div>
 
   <div class="sel-actions" id="selActions">
@@ -499,6 +516,8 @@ const FLOOR_COLORS = {
   "3층":"#2b9348",  // 그린
   "4층":"#e8871e"   // 오렌지
 };
+const CUSTOM_COLOR = "#5c677d"; // 직접 입력한 업무(팔레트에 없는 내용) 공통 색상
+function taskColor(task){ return COLORS[task] || CUSTOM_COLOR; }
 const START = 9, END = 24;              // 9:00 ~ 24:00
 const SLOTS = [];                       // 30분 단위 슬롯 (총 30개)
 for(let t=START*2; t<END*2; t++) SLOTS.push(t); // t = half-hour index (18 = 9:00)
@@ -777,6 +796,25 @@ function renderPalette(){
     chip.onclick = ()=>{ currentFloor = f; renderPalette(); };
     pal.insertBefore(chip, hint);
   });
+
+  updateCustomActiveLabel();
+}
+
+/* ---------- 직접 입력(팔레트에 없는 업무) ---------- */
+function applyCustomTask(){
+  const inp = document.getElementById('customTaskInput');
+  const text = inp.value.trim();
+  if(!text){ alert('칠할 내용을 입력해 주세요.'); return; }
+  currentTask = text;
+  renderPalette();
+}
+document.getElementById('customTaskInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); applyCustomTask(); }
+});
+function updateCustomActiveLabel(){
+  const label = document.getElementById('customActiveLabel');
+  const isCustom = !TASKS.includes(currentTask);
+  label.textContent = isCustom ? `✓ 현재 선택: "${currentTask}" (아래 표에서 칠하기)` : '';
 }
 
 /* ---------- 시간 select (30분 단위) ---------- */
@@ -884,7 +922,7 @@ function renderTable(){
         const task = slot ? slot.task : null;
         td.className = 'slot' + (task==="휴게"?" 휴게":"");
         // 층이 지정되면 층 색상, 아니면 업무 색상
-        td.style.background = task ? (slot.floor ? FLOOR_COLORS[slot.floor] : COLORS[task]) : '#fff';
+        td.style.background = task ? (slot.floor ? FLOOR_COLORS[slot.floor] : taskColor(task)) : '#fff';
         if(slot){
           td.innerHTML = slot.floor
             ? `<span style="display:block;font-size:9px;font-weight:800;letter-spacing:.3px">${slot.floor}</span>${task}`
@@ -1375,7 +1413,7 @@ async function downloadXLSX(){
       } else {
         const s = emp.slots[si];
         if(s){
-          const bg = s.floor ? FLOOR_COLORS[s.floor] : COLORS[s.task];
+          const bg = s.floor ? FLOOR_COLORS[s.floor] : taskColor(s.task);
           cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:argb(bg)}};
           cell.value = s.floor ? `${s.floor}\n${s.task}` : s.task;
           cell.font = {size:7.5, bold:true, color:{argb: s.task==="휴게" ? 'FF4A5261' : 'FFFFFFFF'}};
